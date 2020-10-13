@@ -25,6 +25,8 @@ If you like my work, please feel free to provide a personal donation
     Placeholder for the next version (at the beginning of the line):
     ## __WORK IN PROGRESS__
 -->
+## __WORK IN PROGRESS__
+* (L-C-P) Set overlay type (42, manual, nexttimeblock, tadomode)
 
 ### 0.2.0 (2020-09-29)
 * (DutchmanNL) Update dependency's
