@@ -91,29 +91,44 @@ class Tado extends utils.Adapter {
 					for (const x in deviceId) {
 						this.log.debug('Device id channel : ' + deviceId[x]);
 
+						// set temperature and set overlayType should not change the current power state. So get the current state.
+						const power = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.power');
+						const set_power = (power !== null && power !== undefined && power.val !== null) ? power.val : 'off';
+						this.log.debug('Room Power set : ' + set_power);
+
+						// Get current temperature.
 						const temperature = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.temperature');
 						const set_temp = (temperature !== null && temperature !== undefined && temperature.val !== null) ? temperature.val : 20;
 						this.log.debug('Room Temperature set : ' + set_temp);
 
-						const mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType');
-						// if (mode === null || mode === undefined || mode.val === null) {
-						// 	mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.overlay.type');
-						// }
-						const set_mode = (mode !== null && mode !== undefined && mode.val !== null) ? mode.val : 'auto';
-						this.log.debug('Room mode set : ' + set_mode);
+						// Get next overlay type.
+						let mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType');
+
+						// if no next overlay type, get fixed overlay type.
+						if (mode === null || mode === undefined || mode.val === null || mode.val === "") {
+							mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.fixedOverlayType');
+						}
+						// if no overlay type, get "manual" if a overlay is active.
+						if (mode === null || mode === undefined || mode.val === null || mode.val === "") {
+							mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.overlay.type');
+						}
+						// if overlay mode is not set, use "auto".
+						const set_mode = (mode !== null && mode !== undefined && mode.val !== null && mode.val !== "") ? mode.val : 'auto';
+						this.log.debug('Room Mode set : ' + set_mode);
 
 						switch (deviceId[x]) {
 
 							case ('clearZoneOverlay'):
 								this.log.info('Overlay cleared for room : ' + deviceId[4] + ' in home : ' + deviceId[2]);
 								await this.clearZoneOverlay(deviceId[2], deviceId[4]);
+								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType', null, true);
 								await this.DoConnect();
 
 								break;
 
 							case ('temperature'):
 								this.log.info('Temperature changed for room : ' + deviceId[4] + ' in home : ' + deviceId[2] + ' to API with : ' + state.val);
-								await this.setZoneOverlay(deviceId[2], deviceId[4], 'on', state.val, set_mode);
+								await this.setZoneOverlay(deviceId[2], deviceId[4], set_power, state.val, set_mode);
 								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType', null, true);
 								this.DoConnect();
 
@@ -139,7 +154,7 @@ class Tado extends utils.Adapter {
 
 							case ('overlayType'):
 								this.log.info('Mode changed for room : ' + deviceId[4] + ' in home : ' + deviceId[2] + ' to API with : ' + state.val);
-								await this.setZoneOverlay(deviceId[2], deviceId[4], 'on', set_temp, state.val);
+								await this.setZoneOverlay(deviceId[2], deviceId[4], set_power, set_temp, state.val);
 								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType', null, true);
 								this.DoConnect();
 
@@ -473,6 +488,8 @@ class Tado extends utils.Adapter {
 				config.termination.type = 'TIMER';
 				config.termination.durationInSeconds = termination;
 			} else if (termination.toLowerCase() === 'manual') {
+				config.termination.type = 'MANUAL';
+			} else if (termination.toLowerCase() === '"manual"') {
 				config.termination.type = 'MANUAL';
 			} else if (termination.toLowerCase() === 'nexttimeblock') {
 				config.termination.typeSkillBasedApp = 'NEXT_TIME_BLOCK';
@@ -1371,6 +1388,15 @@ class Tado extends utils.Adapter {
 										this.create_state(state_root_states + '.' + i + '.' + y, y, null);
 									} else {
 										this.create_state(state_root_states + '.' + i + '.' + y, y, ZonesState_data[i][y].celsius, false);
+									}
+
+									const currentValue = await this.getStateAsync(state_root_states + '.' + i + '.' + 'fixedOverlayType');
+
+									if (currentValue !== null && currentValue !== undefined) {
+										this.create_state(state_root_states + '.' + i + '.' + 'fixedOverlayType', 'fixedOverlayType', currentValue.val);
+									}
+									else {
+										this.create_state(state_root_states + '.' + i + '.' + 'fixedOverlayType', 'fixedOverlayType', null);
 									}
 
 									this.create_state(state_root_states + '.' + i + '.' + 'nextOverlayType', 'nextOverlayType', null);
