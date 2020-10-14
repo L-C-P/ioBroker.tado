@@ -109,9 +109,9 @@ class Tado extends utils.Adapter {
 							mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.fixedOverlayType');
 						}
 						// if no overlay type, get "manual" if a overlay is active.
-						if (mode === null || mode === undefined || mode.val === null || mode.val === "") {
-							mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.overlay.type');
-						}
+						// if (mode === null || mode === undefined || mode.val === null || mode.val === "") {
+						// 	mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.overlay.type');
+						// }
 						// if overlay mode is not set, use "auto".
 						const set_mode = (mode !== null && mode !== undefined && mode.val !== null && mode.val !== "") ? mode.val : 'auto';
 						this.log.debug('Room Mode set : ' + set_mode);
