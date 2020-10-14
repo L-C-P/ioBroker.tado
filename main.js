@@ -26,6 +26,7 @@ const tado_config = {
 const oauth2 = require('simple-oauth2').create(tado_config);
 const state_attr = require(__dirname + '/lib/state_attr.js');
 const axios = require('axios');
+const { constants } = require('perf_hooks');
 let polling; // Polling timer
 const counter = []; // counter timer
 
@@ -85,31 +86,20 @@ class Tado extends utils.Adapter {
 
 				try {
 
-					// const deviceId = id.split('.');
 					const deviceId = id.split('.');
 					// let stateNameToSend = '';
 					for (const x in deviceId) {
 						this.log.debug('Device id channel : ' + deviceId[x]);
 
-						let set_temp = null;
-						let set_mode = null;
 						const temperature = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.temperature');
-						const mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.overlay.type');
-
-						if (temperature !== null && temperature !== undefined) {
-							set_temp = temperature.val;
-						} else {
-							set_temp = '20';
-						}
-
+						const set_temp = (temperature !== null && temperature !== undefined && temperature.val !== null) ? temperature.val : 20;
 						this.log.debug('Room Temperature set : ' + set_temp);
 
-						if (mode !== null || mode !== undefined) {
-							set_mode = 'auto';
-						} else {
-							set_mode = mode;
-						}
-
+						const mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType');
+						// if (mode === null || mode === undefined || mode.val === null) {
+						// 	mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.overlay.type');
+						// }
+						const set_mode = (mode !== null && mode !== undefined && mode.val !== null) ? mode.val : 'auto';
 						this.log.debug('Room mode set : ' + set_mode);
 
 						switch (deviceId[x]) {
@@ -124,29 +114,25 @@ class Tado extends utils.Adapter {
 							case ('temperature'):
 								this.log.info('Temperature changed for room : ' + deviceId[4] + ' in home : ' + deviceId[2] + ' to API with : ' + state.val);
 								await this.setZoneOverlay(deviceId[2], deviceId[4], 'on', state.val, set_mode);
-
+								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType', null, true);
 								this.DoConnect();
 
 								break;
 
 							case ('power'):
+								try {
+									this.log.info('Power changed for room : ' + deviceId[4] + ' in home : ' + deviceId[2] + ' to API with : ' + state.val + ' and Temperature : ' + set_temp + ' and mode : ' + set_mode);
+									await this.setZoneOverlay(deviceId[2], deviceId[4], state.val, set_temp, set_mode);
 
-								if (set_mode === 'auto' && state.val === 'ON') {
-
-									await this.clearZoneOverlay(deviceId[2], deviceId[4]);
-
-								} else {
-
-									try {
-
-										this.log.info('Power changed for room : ' + deviceId[4] + ' in home : ' + deviceId[2] + ' to API with : ' + state.val + ' and Temperature : ' + set_temp + ' and mode : ' + set_mode);
-										await this.setZoneOverlay(deviceId[2], deviceId[4], state.val, set_temp, mode);
-
-									} catch (error) {
-										this.log.error('Power changed for room : ' + deviceId[4] + ' in home : ' + deviceId[2] + ' to API with : ' + state.val + '  error from temperature : ' + error);
-										await this.setZoneOverlay(deviceId[2], deviceId[4], state.val, '20', 'manual');
+									if (set_mode === 'auto' && state.val === 'on') {
+										await this.clearZoneOverlay(deviceId[2], deviceId[4]);
 									}
+								} catch (error) {
+									this.log.error('Power changed for room : ' + deviceId[4] + ' in home : ' + deviceId[2] + ' to API with : ' + state.val + '  error from temperature : ' + error);
+									await this.setZoneOverlay(deviceId[2], deviceId[4], state.val, '20', 'manual');
 								}
+
+								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType', null, true);
 								this.DoConnect();
 
 								break;
@@ -154,13 +140,14 @@ class Tado extends utils.Adapter {
 							case ('overlayType'):
 								this.log.info('Mode changed for room : ' + deviceId[4] + ' in home : ' + deviceId[2] + ' to API with : ' + state.val);
 								await this.setZoneOverlay(deviceId[2], deviceId[4], 'on', set_temp, state.val);
+								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType', null, true);
+								this.DoConnect();
 
 								break;
 
 							default:
 
 						}
-
 					}
 
 					this.log.debug('State change detected from different source then adapter');
@@ -466,6 +453,7 @@ class Tado extends utils.Adapter {
 				type: 'HEATING',
 			},
 			termination: {
+				type: 'TADO_MODE',
 			}
 		};
 
@@ -480,15 +468,15 @@ class Tado extends utils.Adapter {
 			config.setting.power = 'OFF';
 		}
 
-		if (!isNaN(parseInt(termination))) {
-			config.termination.type = 'TIMER';
-			config.termination.durationInSeconds = termination;
-		} else if (termination.toLowerCase() === 'manual') {
-			config.termination.type = 'MANUAL';
-		} else if (termination.toLowerCase() === 'nexttimeblock') {
-			config.termination.typeSkillBasedApp = 'NEXT_TIME_BLOCK';
-		} else {
-			config.termination.type = 'TADO_MODE';
+		if (termination) {
+			if (!isNaN(parseInt(termination))) {
+				config.termination.type = 'TIMER';
+				config.termination.durationInSeconds = termination;
+			} else if (termination.toLowerCase() === 'manual') {
+				config.termination.type = 'MANUAL';
+			} else if (termination.toLowerCase() === 'nexttimeblock') {
+				config.termination.typeSkillBasedApp = 'NEXT_TIME_BLOCK';
+			}
 		}
 
 		this.log.debug('Send API ZoneOverlay API call Home : ' + home_id + ' zone : ' + zone_id + ' config : ' + JSON.stringify(config));
@@ -1384,6 +1372,9 @@ class Tado extends utils.Adapter {
 									} else {
 										this.create_state(state_root_states + '.' + i + '.' + y, y, ZonesState_data[i][y].celsius, false);
 									}
+
+									this.create_state(state_root_states + '.' + i + '.' + 'nextOverlayType', 'nextOverlayType', null);
+
 								} else {
 									this.create_state(state_root_states + '.' + i + '.' + y, y, ZonesState_data[i][y]);
 								}
