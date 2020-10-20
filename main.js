@@ -54,11 +54,9 @@ class Tado extends utils.Adapter {
 	 * Is called when databases are connected and adapter received configuration.
 	 */
 	async onReady() {
-
 		// Reset the connection indicator during startup
 		this.setState('info.connection', false, true);
 		await this.DoConnect();
-
 	}
 
 	/**
@@ -152,11 +150,11 @@ class Tado extends utils.Adapter {
 
 								break;
 
-							case ('setOverlayType'):
+							case ('overlayType'):
 								this.log.info('Mode changed for room : ' + deviceId[4] + ' in home : ' + deviceId[2] + ' to API with : ' + state.val);
 								await this.setZoneOverlay(deviceId[2], deviceId[4], set_power, set_temp, state.val);
-								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType', null, true);
 								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.setOverlayType', null, true);
+								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType', null, true);
 								this.DoConnect();
 
 								break;
@@ -493,6 +491,8 @@ class Tado extends utils.Adapter {
 			} else if (termination.toLowerCase() === 'manual') {
 				config.termination.type = 'MANUAL';
 			} else if (termination.toLowerCase() === 'next_time_block') {
+				config.termination.type = 'TADO_MODE';
+			} else if (termination.toLowerCase() === 'tado_mode') {
 				config.termination.type = 'TADO_MODE';
 				// config.termination.typeSkillBasedApp = 'NEXT_TIME_BLOCK'; <- Throws 422
 			}
@@ -1301,6 +1301,10 @@ class Tado extends utils.Adapter {
 												case ('typeSkillBasedApp'):
 													this.create_state(state_root_states + '.' + i + '.' + x + '.' + y, y, ZonesState_data[i][x][y]);
 
+													const terminationType = ZonesState_data[i][x][y];
+													const terminationTypeValue = terminationType !== null && terminationType !== undefined ? terminationType : null;
+													this.create_state(state_root_states + '.overlayType', 'overlayType', terminationTypeValue);
+
 													break;
 
 												case ('remainingTimeInSeconds'):
@@ -1335,18 +1339,18 @@ class Tado extends utils.Adapter {
 
 										}
 									}
-									break;
 
+									break;
 
 								default:
 									this.log.warn('Send this info to developer !!! { Unhandable information found in DoReadDevices overlay : ' + JSON.stringify(i) + ' with value : ' + JSON.stringify(ZonesState_data[i]));
 							}
-
 						}
 
 						break;
 
 					case ('overlayType'):
+						// Is set from typeSkillBasedApp
 						// this.create_state(state_root_states + '.' + i, i, ZonesState_data[i]);
 						break;
 
@@ -1386,8 +1390,8 @@ class Tado extends utils.Adapter {
 
 									let currentValue = await this.getStateAsync(state_root_states + '.' + i + '.' + 'fixedOverlayType');
 									this.create_state(state_root_states + '.' + i + '.' + 'fixedOverlayType', 'fixedOverlayType', currentValue !== null && currentValue !== undefined ? currentValue.val : null);
-									this.create_state(state_root_states + '.' + i + '.' + 'nextOverlayType', 'nextOverlayType');
-									this.create_state(state_root_states + '.' + i + '.' + 'setOverlayType', 'setOverlayType');
+									currentValue = await this.getStateAsync(state_root_states + '.' + i + '.' + 'nextOverlayType');
+									this.create_state(state_root_states + '.' + i + '.' + 'nextOverlayType', 'nextOverlayType', currentValue !== null && currentValue !== undefined ? currentValue.val : null);
 								} else {
 									this.create_state(state_root_states + '.' + i + '.' + y, y, ZonesState_data[i][y]);
 								}
@@ -1409,11 +1413,6 @@ class Tado extends utils.Adapter {
 				}
 			}
 		}
-
-		const terminationType = (await this.getStateAsync(state_root_states + '.overlay.termination.typeSkillBasedApp'));
-		const terminationTypeValue = terminationType !== null && terminationType !== undefined ? terminationType.val : null;
-		this.create_state(state_root_states + '.overlayType', 'overlayType', terminationTypeValue);
-		await this.setStateAsync(state_root_states + '.overlayType', terminationTypeValue);
 	}
 
 	// Unclear purpose, ignore for now
