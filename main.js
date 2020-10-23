@@ -99,17 +99,24 @@ class Tado extends utils.Adapter {
 						const set_temp = (temperature !== null && temperature !== undefined && temperature.val !== null) ? temperature.val : 20;
 						this.log.debug('Room Temperature set : ' + set_temp);
 
-						// Get next overlay type.
-						let mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.nextOverlayType');
+						// Get fixed overlay type.
+						let mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.fixedOverlayType');
 
-						// if no next overlay type, get fixed overlay type.
+						// Get next overlay type.
 						if (mode === null || mode === undefined || mode.val === null || mode.val === "") {
-							mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.fixedOverlayType');
+							mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType');
 						}
-						// if no overlay type, get "manual" if a overlay is active.
+
+						// Get default overlay type.
 						if (mode === null || mode === undefined || mode.val === null || mode.val === "") {
-							mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.overlay.type');
+							mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.defaultOverlayType');
 						}
+
+						// if no overlay type, get the current overlay type.
+						if (mode === null || mode === undefined || mode.val === null || mode.val === "") {
+							mode = await this.getStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.currentOverlayType');
+						}
+
 						// if overlay mode is not set, use "auto".
 						const set_mode = (mode !== null && mode !== undefined && mode.val !== null && mode.val !== "") ? mode.val : 'auto';
 						this.log.debug('Room Mode set : ' + set_mode);
@@ -119,7 +126,8 @@ class Tado extends utils.Adapter {
 							case ('clearZoneOverlay'):
 								this.log.info('Overlay cleared for room : ' + deviceId[4] + ' in home : ' + deviceId[2]);
 								await this.clearZoneOverlay(deviceId[2], deviceId[4]);
-								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.nextOverlayType', null, true);
+								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType', null, true);
+								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.currentOverlayType', null, true);
 								await this.DoConnect();
 
 								break;
@@ -127,7 +135,7 @@ class Tado extends utils.Adapter {
 							case ('temperature'):
 								this.log.info('Temperature changed for room : ' + deviceId[4] + ' in home : ' + deviceId[2] + ' to API with : ' + state.val);
 								await this.setZoneOverlay(deviceId[2], deviceId[4], set_power, state.val, set_mode);
-								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.nextOverlayType', null, true);
+								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType', null, true);
 								this.DoConnect();
 
 								break;
@@ -145,16 +153,15 @@ class Tado extends utils.Adapter {
 									await this.setZoneOverlay(deviceId[2], deviceId[4], state.val, '20', 'manual');
 								}
 
-								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.nextOverlayType', null, true);
+								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType', null, true);
 								this.DoConnect();
 
 								break;
 
-							case ('overlayType'):
+							case ('currentOverlayType'):
 								this.log.info('Mode changed for room : ' + deviceId[4] + ' in home : ' + deviceId[2] + ' to API with : ' + state.val);
 								await this.setZoneOverlay(deviceId[2], deviceId[4], set_power, set_temp, state.val);
-								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setOverlayType', null, true);
-								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.nextOverlayType', null, true);
+								await this.setStateAsync(deviceId[2] + '.Rooms.' + deviceId[4] + '.setting.nextOverlayType', null, true);
 								this.DoConnect();
 
 								break;
@@ -1163,7 +1170,13 @@ class Tado extends utils.Adapter {
 		const ZonesState_data = await this.getZoneState(HomeId, ZoneId);
 
 		this.log.debug('ZoneStates_data Result for zone : ' + ZoneId + ' and value : ' + JSON.stringify(ZonesState_data));
+
+		// HomeId + '._info.JSON_response.' + state_name
+
 		this.DoWriteJsonRespons(HomeId, 'Stage_09_ZoneStates_data_' + ZoneId, ZonesState_data);
+
+		// Initiate overlay type
+		let currentOverlayType = null;
 
 		for (const i in ZonesState_data) {
 			if (ZonesState_data[i] !== null && JSON.stringify(ZonesState_data[i]) !== '{}') {
@@ -1227,7 +1240,6 @@ class Tado extends utils.Adapter {
 									break;
 
 								case ('setting'):
-
 									for (const y in ZonesState_data[i]) {
 
 										try {
@@ -1270,6 +1282,7 @@ class Tado extends utils.Adapter {
 
 										}
 									}
+
 									break;
 
 								case ('termination'):
@@ -1301,9 +1314,9 @@ class Tado extends utils.Adapter {
 												case ('typeSkillBasedApp'):
 													this.create_state(state_root_states + '.' + i + '.' + x + '.' + y, y, ZonesState_data[i][x][y]);
 
+													// Save overlay type for later
 													const terminationType = ZonesState_data[i][x][y];
-													const terminationTypeValue = terminationType !== null && terminationType !== undefined ? terminationType : null;
-													this.create_state(state_root_states + '.overlayType', 'overlayType', terminationTypeValue);
+													currentOverlayType = terminationType !== null && terminationType !== undefined && terminationType != '' ? terminationType : null;
 
 													break;
 
@@ -1350,8 +1363,7 @@ class Tado extends utils.Adapter {
 						break;
 
 					case ('overlayType'):
-						// Is set from typeSkillBasedApp
-						// this.create_state(state_root_states + '.' + i, i, ZonesState_data[i]);
+						this.create_state(state_root_states + '.' + i, i, ZonesState_data[i]);
 						break;
 
 					case ('openWindowDetected'):
@@ -1396,6 +1408,16 @@ class Tado extends utils.Adapter {
 
 							}
 						}
+
+						let currentValue = await this.getStateAsync(state_root_states + '.' + i + '.fixedOverlayType');
+						this.create_state(state_root_states + '.' + i + '.fixedOverlayType', 'fixedOverlayType', currentValue !== null && currentValue !== undefined ? currentValue.val : null);
+						currentValue = await this.getStateAsync(state_root_states + '.' + i + '.defaultOverlayType');
+						this.create_state(state_root_states + '.' + i + '.defaultOverlayType', 'defaultOverlayType', currentValue !== null && currentValue !== undefined ? currentValue.val : null);
+						currentValue = await this.getStateAsync(state_root_states + '.' + i + '.nextOverlayType');
+						this.create_state(state_root_states + '.' + i + '.nextOverlayType', 'nextOverlayType', currentValue !== null && currentValue !== undefined ? currentValue.val : null);
+						currentValue = await this.getStateAsync(state_root_states + '.' + i + '.currentOverlayType');
+						this.create_state(state_root_states + '.' + i + '.currentOverlayType', 'currentOverlayType', currentValue !== null && currentValue !== undefined ? currentValue.val : null);
+
 						break;
 
 
@@ -1409,10 +1431,8 @@ class Tado extends utils.Adapter {
 			}
 		}
 
-		let currentValue = await this.getStateAsync(state_root_states + '.' + 'fixedOverlayType');
-		this.create_state(state_root_states + '.' + 'fixedOverlayType', 'fixedOverlayType', currentValue !== null && currentValue !== undefined ? currentValue.val : null);
-		currentValue = await this.getStateAsync(state_root_states + '.' + 'nextOverlayType');
-		this.create_state(state_root_states + '.' + 'nextOverlayType', 'nextOverlayType', currentValue !== null && currentValue !== undefined ? currentValue.val : null);
+		// Set the current overlay type
+		this.create_state(state_root_states + '.setting.currentOverlayType', 'currentOverlayType', currentOverlayType);
 	}
 
 	// Unclear purpose, ignore for now
