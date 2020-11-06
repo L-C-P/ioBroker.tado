@@ -678,6 +678,10 @@ class Tado extends utils.Adapter {
 					this.create_state(HomeId + '._info. ' + i, i, this.Home_data[i]);
 					break;
 
+				case ('autoAssistFreeTrialEnabled'):
+					this.create_state(HomeId + '._info. ' + i, i, this.Home_data[i]);
+					break;
+
 				case ('incidentDetection'):
 					await this.setObjectNotExistsAsync(HomeId + '._info.incidentDetection', {
 						type: 'channel',
